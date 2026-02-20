@@ -1,7 +1,14 @@
 cmake_minimum_required(VERSION 3.16)
-project(change CXX)
+project(change)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # for lsp
 
-add_executable(change ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
+add_library(ai SHARED ${CMAKE_SOURCE_DIR}/include/ai.cpp)
+add_library(brain SHARED ${CMAKE_SOURCE_DIR}/include/brain.cpp)
+
+target_include_directories(ai PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(brain PUBLIC ${CMAKE_SOURCE_DIR}/include)
+
+add_executable(change ${CMAKE_SOURCE_DIR}/src/main.cpp)
+
+target_link_libraries(change PRIVATE ai brain)
