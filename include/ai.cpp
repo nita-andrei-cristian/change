@@ -1,19 +1,156 @@
 #include "ai.hpp"
+#include <cstdio>
 #include <iostream>
+#include <llama.h>
+#include <string>
+#include <vector>
 
-AI::AI::AI() {
+AI::AI::AI(std::string modelpath) {
+  path = modelpath;
+
   init();
+
   std::cout << "AI [" << id << "] is ready.\n";
 }
 
 void AI::AI::init() {
   id = ++GLOBAL_ID;
+
+  gbnf = "";
+  params = llama_model_default_params();
+  params.n_gpu_layers = 999; // force GPU
+  // RECOMMENDED SETTINGS ./llama-cli -hf Qwen/Qwen3-8B-GGUF:Q8_0 --jinja
+  // --color -ngl 99 -fa -sm row --temp 0.6 --top-k 20 --top-p 0.95 --min-p 0
+  // --presence-penalty 1.5 -c 40960 -n 32768 --no-context-shift
+
+  model = llama_model_load_from_file(path.c_str(), params);
+  if (model == nullptr || model == NULL) {
+    fprintf(stderr, "ERROR : Unable to laod model %d : %s", id, __func__);
+  }
+
+  vocab = llama_model_get_vocab(model);
+
+  auto sparams = llama_sampler_chain_default_params();
+  sparams.no_perf = false;
+  smpl = llama_sampler_chain_init(sparams);
+
   std::cout << "AI set id to [" << id << "]\n";
 }
 
-std::string AI::AI::run(std::string input) {
-  std::string response = input == "hi" ? "Hello!\n" : "I don't know!\n";
-  return response;
+std::string AI::AI::get_prompt(std::string user_prompt) {
+
+  // format for current model (gemma 2).
+
+  std::string prompt;
+  prompt += "<|im_start|>user: ";
+  prompt += user_prompt;
+  prompt += "<im_end>";
+  prompt += "<im_start>model : ";
+  prompt += "<im_end>";
+  return prompt;
+}
+
+std::string AI::AI::run(std::string user_prompt) {
+  int min_tokens = 650;
+  std::string output = "";
+  std::string prompt = get_prompt(user_prompt);
+
+  // find the number of tokens in the prompt
+  const int n_prompt = -llama_tokenize(vocab, prompt.c_str(), prompt.size(),
+                                       NULL, 0, true, true);
+
+  // allocate space for the tokens and tokenize the prompt
+  std::vector<llama_token> prompt_tokens(n_prompt);
+  if (llama_tokenize(vocab, prompt.c_str(), prompt.size(), prompt_tokens.data(),
+                     prompt_tokens.size(), true, true) < 0) {
+    fprintf(stderr, "%s: error: failed to tokenize the prompt\n", __func__);
+    return "ERROR (see in logs)";
+  }
+
+  llama_context_params ctx_params = llama_context_default_params();
+  ctx_params.n_ctx = n_prompt + n_predict - 1;
+  ctx_params.n_batch = n_prompt;
+  ctx_params.no_perf = false;
+
+  ctx = llama_init_from_model(model, ctx_params);
+
+  if (ctx == NULL) {
+    fprintf(stderr, "%s: error: failed to create the llama_context\n",
+            __func__);
+    return "ERROR (see in logs)";
+  }
+
+  // initialize the sampler
+  // llama_sampler_chain_add(
+  //    smpl, llama_sampler_init_grammar(vocab, gbnf.c_str(), "root"));
+  llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+
+  // prepare batch
+  llama_batch batch =
+      llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
+
+  if (llama_model_has_encoder(model)) {
+    if (llama_encode(ctx, batch)) {
+      fprintf(stderr, "%s : failed to eval\n", __func__);
+      return "ERROR (see in logs)";
+    }
+
+    llama_token decoder_start_token_id = llama_model_decoder_start_token(model);
+    if (decoder_start_token_id == LLAMA_TOKEN_NULL) {
+      decoder_start_token_id = llama_vocab_bos(vocab);
+    }
+
+    batch = llama_batch_get_one(&decoder_start_token_id, 1);
+  }
+
+  // main loop
+
+  int n_decode = 0;
+  llama_token new_token_id;
+
+  for (int n_pos = 0; n_pos + batch.n_tokens < n_prompt + n_predict;) {
+    // evaluate the current batch with the transformer model
+    if (llama_decode(ctx, batch)) {
+      fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
+      return "ERROR (see in logs)";
+    }
+
+    n_pos += batch.n_tokens;
+
+    // sample the next token
+    {
+      new_token_id = llama_sampler_sample(smpl, ctx, -1);
+      // llama_sampler_accept(smpl, new_token_id);
+
+      char buf[128];
+      int n =
+          llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
+
+      if (n < 0) {
+        fprintf(stderr, "%s: error: failed to convert token to piece\n",
+                __func__);
+        return "ERROR (see in logs)";
+      }
+
+      std::string s(buf, n);
+      output += s;
+
+      std::string end_token = "<|im_end|>";
+      if (output.find(end_token) != std::string::npos &&
+          n_decode < min_tokens) {
+        output.erase(output.length() - end_token.length(), end_token.length());
+        break;
+      }
+      fflush(stdout);
+
+      // prepare the next batch with the sampled token
+      batch = llama_batch_get_one(&new_token_id, 1);
+
+      n_decode += 1;
+    }
+  }
+
+  return output;
 }
 
 void AI::AI::modifyBrain(std::string input) {
@@ -22,5 +159,8 @@ void AI::AI::modifyBrain(std::string input) {
                                          : brain->external_profile;
   brain->updateExternalProfile(newInfo);
 }
+
+void AI::AI::set_grammar(std::string new_gbnf) { gbnf = new_gbnf; }
+std::string AI::AI::get_grammar() { return gbnf; }
 
 int AI::AI::GLOBAL_ID = 0;

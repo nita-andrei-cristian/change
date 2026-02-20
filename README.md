@@ -13,4 +13,7 @@ Startup guide (on linux)
 chmod +x debug.sh
 ./debug.sh
 ```
-You may use clang lsp (or any other that supports `compiler_commands.json`)
+> You must install a model and change the path from main.cpp !!!
+- You may use clang lsp (or any other that supports `compiler_commands.json`)
+- The project is built for my NVIDIA setup, you may customize LLAMA.cpp flags if needed.
+- What? does the debug name not many any sense because it builds in release? Yes you'r right!

@@ -1,10 +1,10 @@
 mkdir debug
 cd debug
 clear
-cmake -DCMAKE_BUILD_TYPE=Debug ..
+cmake -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON ..
 
 cd ..
-cmake --build debug
+cmake --build debug --config Release -j
 
 cd debug
 
