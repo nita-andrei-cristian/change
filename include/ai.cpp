@@ -1,5 +1,6 @@
 #include "ai.hpp"
 #include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <llama.h>
 #include <string>
@@ -23,6 +24,8 @@ void AI::AI::init() {
   // --color -ngl 99 -fa -sm row --temp 0.6 --top-k 20 --top-p 0.95 --min-p 0
   // --presence-penalty 1.5 -c 40960 -n 32768 --no-context-shift
 
+  n_predict = 1024;
+
   model = llama_model_load_from_file(path.c_str(), params);
   if (model == nullptr || model == NULL) {
     fprintf(stderr, "ERROR : Unable to laod model %d : %s", id, __func__);
@@ -44,14 +47,13 @@ std::string AI::AI::get_prompt(std::string user_prompt) {
   std::string prompt;
   prompt += "<|im_start|>user: ";
   prompt += user_prompt;
-  prompt += "<im_end>";
-  prompt += "<im_start>model : ";
-  prompt += "<im_end>";
+  prompt += "<|im_end|>";
+  prompt += "<|im_start|>model : ";
+  prompt += "<|im_end|>";
   return prompt;
 }
 
 std::string AI::AI::run(std::string user_prompt) {
-  int min_tokens = 650;
   std::string output = "";
   std::string prompt = get_prompt(user_prompt);
 
@@ -68,7 +70,7 @@ std::string AI::AI::run(std::string user_prompt) {
   }
 
   llama_context_params ctx_params = llama_context_default_params();
-  ctx_params.n_ctx = n_prompt + n_predict - 1;
+  ctx_params.n_ctx = n_prompt + n_predict + 1;
   ctx_params.n_batch = n_prompt;
   ctx_params.no_perf = false;
 
@@ -84,6 +86,9 @@ std::string AI::AI::run(std::string user_prompt) {
   // llama_sampler_chain_add(
   //    smpl, llama_sampler_init_grammar(vocab, gbnf.c_str(), "root"));
   llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+  //  llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.95, 0.05));
+  llama_sampler_chain_add(smpl, llama_sampler_init_top_k(.25));
+  llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.6));
 
   // prepare batch
   llama_batch batch =
@@ -105,10 +110,9 @@ std::string AI::AI::run(std::string user_prompt) {
 
   // main loop
 
-  int n_decode = 0;
   llama_token new_token_id;
 
-  for (int n_pos = 0; n_pos + batch.n_tokens < n_prompt + n_predict;) {
+  for (int n_pos = -100; n_pos + batch.n_tokens < n_prompt + n_predict;) {
     // evaluate the current batch with the transformer model
     if (llama_decode(ctx, batch)) {
       fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
@@ -122,6 +126,10 @@ std::string AI::AI::run(std::string user_prompt) {
       new_token_id = llama_sampler_sample(smpl, ctx, -1);
       // llama_sampler_accept(smpl, new_token_id);
 
+      if (llama_vocab_is_eog(vocab, new_token_id)) {
+        break;
+      }
+
       char buf[128];
       int n =
           llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
@@ -133,20 +141,12 @@ std::string AI::AI::run(std::string user_prompt) {
       }
 
       std::string s(buf, n);
-      output += s;
 
-      std::string end_token = "<|im_end|>";
-      if (output.find(end_token) != std::string::npos &&
-          n_decode < min_tokens) {
-        output.erase(output.length() - end_token.length(), end_token.length());
-        break;
-      }
-      fflush(stdout);
+      output += s;
+      std::cout << s;
 
       // prepare the next batch with the sampled token
       batch = llama_batch_get_one(&new_token_id, 1);
-
-      n_decode += 1;
     }
   }
 

@@ -16,8 +16,10 @@ private:
   llama_model_params params;
   const llama_vocab *vocab;
   llama_sampler *smpl;
-  const int n_predict = 64;
   llama_context *ctx;
+
+  int n_predict;
+  int n_parallel;
 
   std::string gbnf;
   std::string path;

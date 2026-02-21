@@ -1,6 +1,8 @@
+#include "llama.h"
 #include <ai.hpp>
 #include <brain.hpp>
 #include <iostream>
+#include <locale>
 
 void initializeBrain() {
   auto brain = Brain::getInstance();
@@ -12,6 +14,7 @@ int main() {
   auto ai = AI::AI("/home/nita/dev/cpp/change/models/qwen3-8b-q4.gguf");
 
   ggml_backend_load_all();
+
   initializeBrain();
 
   llama_log_set(
@@ -28,10 +31,11 @@ int main() {
   std::cout << "[c] - clear\n";
   std::cout << '\n';
 
+  std::string history = "message history : ";
   while (true) {
 
     std::string input;
-    std::cout << "Write something about yourself : ";
+    std::cout << "\nWrite something about yourself : ";
     getline(std::cin, input);
 
     if (input == "q")
@@ -42,8 +46,10 @@ int main() {
       continue;
     }
 
-    auto output = ai.run(input);
-    std::cout << "AI Model said:\n" << output << "\n";
+    history += "User said : " + input + '\n';
+    auto output = ai.run(history);
+    // std::cout << "AI Model said: " << output << "\n";
+    history += "AI said : " + output + "\n";
 
     ai.modifyBrain("User just said : " + input);
   }
