@@ -40,11 +40,63 @@ void AI::AI::init() {
   std::cout << "AI set id to [" << id << "]\n";
 }
 
-std::string AI::AI::get_prompt(std::string user_prompt) {
-
-  // format for current model (gemma 2).
-
+std::string AI::AI::get_prompt(std::string user_prompt, MODE mode) {
   std::string prompt;
+  prompt += "<|im_start|>";
+  if (mode == CHAT) {
+    gbnf = R"(
+root ::= <think> thinking </think> .*
+thinking ::= !</think>*
+    )";
+    prompt +=
+        "system: your role is to find out as much external and intern info "
+        "about "
+        "a user. external may be : job, passions, current state, internal may "
+        "be "
+        ": personality, ambitions. You will extract this info and we'll use "
+        "continously to deepen the internal and external profile of the user. "
+        "Be carefull to not overwhelm the user with too many questions and too "
+        "diverse, keep them tight. Try to figure out also what the user wants "
+        "to talk about. do not explain yourself, just write the message";
+  } else if (mode == EXPORT) {
+    prompt +=
+        "system: You are the AI that builds a user profile. you task is the "
+        "following: extract from the current conversation the user internal "
+        "and external profile, output in a short format, almost like a user "
+        "ID, how the user is both in an external and external profile. At the "
+        "end, give the user a title based on his/hers passions. It should be "
+        "cool, like a description for a hero. Your message will be in JSON "
+        "format. It will contain external : list, internal : list, title : "
+        "title";
+    gbnf = R"(
+root   ::= object
+value  ::= object | array | string | number | ("true" | "false" | "null") ws
+
+object ::=
+  "{" ws (
+            string ":" ws value
+    ("," ws string ":" ws value)*
+  )? "}" ws
+
+array  ::=
+  "[" ws (
+            value
+    ("," ws value)*
+  )? "]" ws
+
+string ::=
+  "\"" (
+    [^"\\\x7F\x00-\x1F] |
+    "\\" (["\\bfnrt] | "u" [0-9a-fA-F]{4}) # escapes
+  )* "\"" ws
+
+number ::= ("-"? ([0-9] | [1-9] [0-9]{0,15})) ("." [0-9]+)? ([eE] [-+]? [0-9] [1-9]{0,15})? ws
+
+# Optional space: by convention, applied in this grammar after literal chars when allowed
+ws ::= | " " | "\n" [ \t]{0,20}
+    )";
+  }
+  prompt += "<|im_end|>";
   prompt += "<|im_start|>user: ";
   prompt += user_prompt;
   prompt += "<|im_end|>";
@@ -53,9 +105,9 @@ std::string AI::AI::get_prompt(std::string user_prompt) {
   return prompt;
 }
 
-std::string AI::AI::run(std::string user_prompt) {
+std::string AI::AI::run(std::string user_prompt, MODE mode) {
   std::string output = "";
-  std::string prompt = get_prompt(user_prompt);
+  std::string prompt = get_prompt(user_prompt, mode);
 
   // find the number of tokens in the prompt
   const int n_prompt = -llama_tokenize(vocab, prompt.c_str(), prompt.size(),
@@ -83,12 +135,12 @@ std::string AI::AI::run(std::string user_prompt) {
   }
 
   // initialize the sampler
-  // llama_sampler_chain_add(
-  //    smpl, llama_sampler_init_grammar(vocab, gbnf.c_str(), "root"));
+  llama_sampler_chain_add(
+      smpl, llama_sampler_init_grammar(vocab, gbnf.c_str(), "root"));
   llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
   //  llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.95, 0.05));
-  llama_sampler_chain_add(smpl, llama_sampler_init_top_k(.25));
-  llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.6));
+  // llama_sampler_chain_add(smpl, llama_sampler_init_top_k(.25));
+  // llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.6));
 
   // prepare batch
   llama_batch batch =

@@ -6,6 +6,11 @@
 
 namespace AI {
 
+enum MODE {
+  CHAT,
+  EXPORT,
+};
+
 class AI {
 private:
   int id;
@@ -25,12 +30,12 @@ private:
   std::string path;
 
   void init();
-  std::string get_prompt(std::string user_prompt);
+  std::string get_prompt(std::string user_prompt, MODE mode);
 
 public:
   AI(std::string path);
 
-  std::string run(std::string);
+  std::string run(std::string, MODE mode);
   void modifyBrain(std::string);
 
   void set_grammar(std::string new_gbnf);

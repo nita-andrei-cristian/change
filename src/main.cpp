@@ -2,12 +2,34 @@
 #include <ai.hpp>
 #include <brain.hpp>
 #include <iostream>
-#include <locale>
 
 void initializeBrain() {
   auto brain = Brain::getInstance();
   brain->internal_profile = "Intelect:70/100\nEmotional:50/100";
   brain->external_profile = "Job:Manager\nName:Richard";
+}
+
+void drawMenu() {
+  std::cout << "[q] - quit\n";
+  std::cout << "[c] - clear\n";
+  std::cout << "[e] - export\n";
+  std::cout << '\n';
+}
+
+void disableLogs() {
+  llama_log_set(
+      [](enum ggml_log_level level, const char *text, void * /* user_data */) {
+        if (level >= GGML_LOG_LEVEL_ERROR) {
+          fprintf(stderr, "%s", text);
+        }
+      },
+      nullptr);
+}
+
+void drawStartSession() {
+  system("clear");
+  std::cout << "\n---- Starting session ----\n";
+  drawMenu();
 }
 
 int main() {
@@ -17,19 +39,7 @@ int main() {
 
   initializeBrain();
 
-  llama_log_set(
-      [](enum ggml_log_level level, const char *text, void * /* user_data */) {
-        if (level >= GGML_LOG_LEVEL_ERROR) {
-          fprintf(stderr, "%s", text);
-        }
-      },
-      nullptr);
-
-  system("clear");
-  std::cout << "\n---- Starting session ----\n";
-  std::cout << "[q] - quit\n";
-  std::cout << "[c] - clear\n";
-  std::cout << '\n';
+  drawStartSession();
 
   std::string history = "message history : ";
   while (true) {
@@ -46,12 +56,16 @@ int main() {
       continue;
     }
 
+    if (input == "e") {
+      auto output = ai.run(history, AI::EXPORT);
+      ai.modifyBrain("User just said : " + input);
+      continue;
+    }
+
     history += "User said : " + input + '\n';
-    auto output = ai.run(history);
+    auto output = ai.run(history, AI::CHAT);
     // std::cout << "AI Model said: " << output << "\n";
     history += "AI said : " + output + "\n";
-
-    ai.modifyBrain("User just said : " + input);
   }
 
   std::cout << "---- Session ended ----\n";
