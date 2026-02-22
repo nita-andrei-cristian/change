@@ -3,22 +3,26 @@
 #include <string>
 #pragma one
 
+#define USERS 2
+
 namespace INTERFACE {
 
-	enum MenuState {MAINMENU, SPLITGOAL, QUIT};
+	enum MenuState {MAINMENU, SPLITGOAL, QUIT, PROFILE};
 
 	class Menu{
 		private:
 			AI::AI *ai;
-				
-			Goal *goal;
-			Goal *parentgoal;
-			std::string profile;
-			std::string history;
-			bool sentOneMessage;
 
-			std::string inputString;
-			int inputInt;
+			int userIndex;
+				
+			Goal *goal[USERS];
+			Goal *parentgoal[USERS];
+			std::string profile[USERS];
+			std::string history[USERS];
+			std::string lastMessage[USERS];
+
+			std::string inputString[USERS];
+			int inputInt[USERS];
 
 			MenuState state;
 
@@ -32,9 +36,12 @@ namespace INTERFACE {
 
 			void update();
 			void drawMainMenu();
-			void drawSplitGoalTool();
 			
+			void drawSplitGoalTool();
 			void enterSplitGoalTool();
+			void enterProfileView();
+			void enterJourneyView();
+
 			void readString();
 			void readInt();
 			void start();

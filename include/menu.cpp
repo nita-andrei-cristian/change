@@ -1,45 +1,67 @@
 #include "goal.hpp"
 #include "utils.hpp"
+#include <cstdlib>
 #include <menu.hpp>
 #include <iostream>
 
 using namespace INTERFACE;
 
 Menu::Menu(){
-	profile = "";
-	history = "message history : ";
-	sentOneMessage = false;
-	inputInt = -999;
-	inputString = "";
+	
+	userIndex = 0;
+
+	for (int i = 0; i < USERS; i++){
+		profile[i] = "";
+		history [i]= "message history : ";
+		lastMessage[i] = "";
+		inputInt[i] = -999;
+		inputString[i] = "";
+		goal[i] = nullptr;
+		parentgoal[i] = nullptr;
+	}
 
 	ai = new AI::AI("/home/nita/dev/cpp/change/models/qwen3-8b-q4.gguf");
 }
 
 Menu::~Menu(){
 	delete ai;
-	if (parentgoal != nullptr)
-		delete parentgoal;
+	for (int i = 0; i < USERS; i++){
+		if (parentgoal[i] != nullptr)
+			delete parentgoal[i];
+	}
 }
 
 void Menu::drawMainMenu() {
+	std::cout << "Welcome user [" << userIndex << "]\n";
+
+	if (lastMessage[userIndex].length() > 0){
+		std::cout << "\nAI response : \n" << lastMessage[userIndex] << "\n\n";
+	}
+
 	std::cout << "[q] - quit\n";
 	std::cout << "[c] - clear\n";
-	if (sentOneMessage)
+	std::cout << "[u] - go to next user\n";
+	if (lastMessage[userIndex].length() > 0)
 		std::cout << "[e] - export\n";
-	if (profile.length() > 0)
+	if (profile[userIndex].length() > 0){
 		std::cout << "[g] - generate goal\n";
-	if (goal != nullptr)
+		std::cout << "[p] - see user profile\n";
+		std::cout << "[j] - create a journey\n";
+	}
+	if (goal[userIndex] != nullptr){
 		std::cout << "[s] - split goal\n";
+	}
+
 }
 
 void Menu::drawSplitGoalTool() {
 	system("clear");
 	std::cout << "[-1] - quit\n";
 
-	std::cout << "\n Current Goal : " << goal->name << "\n\n";
+	std::cout << "\n Current Goal : " << goal[userIndex]->name << "\n\n";
 
-	for (int i = 0; i < goal->childrensize; i++) {
-		std::cout << "[" << i << "] : " << goal->children[i]->name << "\n";
+	for (int i = 0; i < goal[userIndex]->childrensize; i++) {
+		std::cout << "[" << i << "] : " << goal[userIndex]->children[i]->name << "\n";
 	}
 
 	std::cout << '\n';
@@ -55,16 +77,17 @@ void Menu::drawEndSession() {
 }
 
 void Menu::readString() {
-	std::cout << "\nType : ";
-	getline(std::cin, inputString);
+	std::cout << "\nEnter : ";
+	getline(std::cin, inputString[userIndex]);
 }
 
 void Menu::readInt() {
 	std::cout << "\nWrite [0-10]: ";
-	std::cin >> inputInt;
+	std::cin >> inputInt[userIndex];
 }
 
-void Menu::start(){
+void Menu::start()
+{
 	initializeBrain();
 
 	drawStartSession();
@@ -77,75 +100,101 @@ void Menu::start(){
 	drawEndSession();
 }
 
-void Menu::enterSplitGoalTool(){
+void Menu::enterSplitGoalTool()
+{
 	state = SPLITGOAL;
 
-	if (goal->childrensize == 0)
-		SPLIT_GOAL(*goal, *ai); // split the actual goal
+	if (goal[userIndex]->childrensize == 0)
+		SPLIT_GOAL(*goal[userIndex], *ai); // split the actual goal
 
 	drawSplitGoalTool();
 	readInt();
 
-	if (inputInt == -1){
+	if (inputInt[userIndex] == -1){
 		system("clear");
 		return;
 	}
 
-	if (inputInt >= 0 && inputInt < goal->childrensize)
-		goal = goal->children[inputInt];
+	if (inputInt[userIndex] >= 0 && inputInt[userIndex] < goal[userIndex]->childrensize)
+		goal[userIndex] = goal[userIndex]->children[inputInt[userIndex]];
 
 }
 
-void Menu::update(){
+void Menu::enterProfileView()
+{
+	state = PROFILE;
+
+	system("clear");
+	std::cout << "USER [" << userIndex << "] PROFILE ----\n\n";
+	std::cout << profile[userIndex] << "\n\n";
+
+	std::cout << "Press anything to continue...\n";
+
+}
+
+void Menu::update()
+{
+	drawMainMenu();
 	readString();
 
-	if (inputString == "q"){
+	if (inputString[userIndex] == "q"){
 		state = QUIT;
 		return;
 	}
 
-	if (inputString == "c") {
+	if (inputString[userIndex] == "c") {
 		system("clear");
-		drawMainMenu();
 		return;
 	}
 
-	if (inputString == "e" && sentOneMessage) {
-		profile = ai->run(history, AI::EXPORT);
-		ai->modifyBrain(profile);
+	if (inputString[userIndex] == "u") {
+		system("clear");
+		userIndex = ( userIndex + 1 ) % USERS;
 		return;
 	}
 
-	if (inputString == "g" && profile.length() > 0) {
-		if (goal != nullptr) delete goal;
-		goal = new Goal(ai->run(profile, AI::GENERATE_GOAL));
-		parentgoal = goal;
-		history += " AI GENERATED A GOAL FOR THE USER : " + goal->name + "\n";
+	if (inputString[userIndex] == "e" && lastMessage[userIndex].length() > 0) {
+		profile[userIndex] = ai->run(history[userIndex], AI::EXPORT);
+		ai->modifyBrain(profile[userIndex]);
+		system("clear");
+		return;
+	}
+
+	if (inputString[userIndex] == "g" && profile[userIndex].length() > 0) {
+		if (goal[userIndex] != nullptr) delete goal[userIndex];
+		goal[userIndex] = new Goal(ai->run(profile[userIndex], AI::GENERATE_GOAL));
+		parentgoal[userIndex] = goal[userIndex];
+		history[userIndex] += " AI GENERATED A GOAL FOR THE USER : " + goal[userIndex]->name + "\n";
 		return;
 	}
 
 	
-	if (inputString == "s" && goal != nullptr) {
+	if (inputString[userIndex] == "s" && goal[userIndex] != nullptr) {
 		enterSplitGoalTool();
 		state = MAINMENU;
 		return;
 	}
 
+	if (inputString[userIndex] == "p" && profile[userIndex].length() > 0) {
+		enterProfileView();
+		state = MAINMENU;
+		return;
+	}
 
+	if (inputString[userIndex].length() <= 1) {
+		system("clear"); 
+		return;
+	};
 	
-	history += "User said : " + inputString + '\n';
-	auto output = ai->run(history, AI::CHAT);
-	history += "AI said : " + output + "\n";
+	history[userIndex] += "User said : " + inputString[userIndex] + '\n';
+	auto output = ai->run(history[userIndex], AI::CHAT);
+	history[userIndex] += "AI said : " + output + "\n";
 	
 	system("clear");
 
-
-	//std::cout << output << "\n";
-
-	sentOneMessage = true;
+	lastMessage[userIndex] = output;
 
 	std::cout << std::endl << std::endl;
-	drawMainMenu();
 
 }
 

@@ -228,7 +228,7 @@ std::string AI::AI::run(std::string user_prompt, MODE mode) {
 			std::string s(buf, n);
 
 			output += s;
-			std::cout << s;
+			//std::cout << s;
 
 			// prepare the next batch with the sampled token
 			batch = llama_batch_get_one(&new_token_id, 1);
