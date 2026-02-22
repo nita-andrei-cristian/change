@@ -9,6 +9,8 @@ namespace AI {
 enum MODE {
   CHAT,
   EXPORT,
+  GENERATE_GOAL,
+  SPLIT_GOAL,
 };
 
 class AI {
